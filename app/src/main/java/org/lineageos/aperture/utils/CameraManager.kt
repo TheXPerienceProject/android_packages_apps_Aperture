@@ -6,10 +6,17 @@
 package org.lineageos.aperture.utils
 
 import android.content.Context
+import android.icu.text.DecimalFormat
+import android.icu.text.DecimalFormatSymbols
+import android.hardware.camera2.CameraManager as Camera2CameraManager
 import androidx.camera.extensions.ExtensionsManager
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.LifecycleCameraController
 import org.lineageos.aperture.R
+import org.lineageos.aperture.getBoolean
+import org.lineageos.aperture.getStringArray
+import java.math.RoundingMode
+import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -18,19 +25,22 @@ import java.util.concurrent.Executors
  */
 @androidx.camera.camera2.interop.ExperimentalCamera2Interop
 class CameraManager(context: Context) {
+    val camera2CameraManager: Camera2CameraManager =
+        context.getSystemService(Camera2CameraManager::class.java)
+
     private val cameraProvider = ProcessCameraProvider.getInstance(context).get()
     val extensionsManager = ExtensionsManager.getInstanceAsync(context, cameraProvider).get()!!
     val cameraController = LifecycleCameraController(context)
     val cameraExecutor: ExecutorService = Executors.newSingleThreadExecutor()
 
     private val enableAuxCameras by lazy {
-        context.resources.getBoolean(R.bool.config_enableAuxCameras)
+        context.resources.getBoolean(context, R.bool.config_enableAuxCameras)
     }
     private val ignoredAuxCameraIds by lazy {
-        context.resources.getStringArray(R.array.config_ignoredAuxCameraIds)
+        context.resources.getStringArray(context, R.array.config_ignoredAuxCameraIds)
     }
     private val ignoreLogicalAuxCameras by lazy {
-        context.resources.getBoolean(R.bool.config_ignoreLogicalAuxCameras)
+        context.resources.getBoolean(context, R.bool.config_ignoreLogicalAuxCameras)
     }
 
     private val cameras: Map<String, Camera>
@@ -172,15 +182,29 @@ class CameraManager(context: Context) {
         val auxCameras = facingCameras
             .drop(1)
             .filter { !ignoreLogicalAuxCameras || !it.isLogical }
-        // Setup zoom ratio for aux cameras
-        mainCamera.mm35FocalLengths?.getOrNull(0)?.let { mainCameraMm35FocalLength ->
+
+        // Setup zoom ratio for aux cameras if main cam is a physical camera device
+        if (mainCamera.sensors.size == 1) {
+            val mainSensorViewAngleDegrees = mainCamera.sensors[0].viewAngleDegrees.toFloat()
+
             for (camera in auxCameras) {
-                camera.mm35FocalLengths?.getOrNull(0)?.let {
-                    camera.zoomRatio = it / mainCameraMm35FocalLength
+                // Setup zoom ratio only for physical camera devices
+                if (camera.sensors.size == 1) {
+                    val auxSensor = camera.sensors[0]
+                    camera.intrinsicZoomRatio = roundOffZoomRatio(
+                        mainSensorViewAngleDegrees / auxSensor.viewAngleDegrees
+                    )
                 }
             }
         }
 
         return listOf(mainCamera) + auxCameras
+    }
+
+    private fun roundOffZoomRatio(number: Float): Float {
+        val symbols = DecimalFormatSymbols(Locale.US)
+        return DecimalFormat("#.#", symbols).apply {
+            roundingMode = RoundingMode.CEILING.ordinal
+        }.format(number).toFloat()
     }
 }
