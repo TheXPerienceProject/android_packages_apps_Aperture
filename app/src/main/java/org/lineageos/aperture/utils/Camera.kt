@@ -12,6 +12,7 @@ import android.util.Size
 import android.util.SizeF
 import androidx.camera.camera2.interop.Camera2CameraInfo
 import androidx.camera.core.CameraInfo
+import androidx.camera.video.Quality
 import androidx.camera.video.QualitySelector
 import org.lineageos.aperture.getSupportedModes
 import org.lineageos.aperture.physicalCameraIds
@@ -74,12 +75,17 @@ class Camera(cameraInfo: CameraInfo, cameraManager: CameraManager) {
 
     var intrinsicZoomRatio = 1f
 
-    val supportedVideoQualities = QualitySelector.getSupportedQualities(cameraInfo).reversed()
-    val supportedVideoFramerates: List<Framerate> = mutableListOf(Framerate.FPS_AUTO).apply {
+    private val supportedVideoFramerates =
         camera2CameraInfo.getCameraCharacteristic(
             CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES
-        )?.let {
-            addAll(it.mapNotNull { range -> Framerate.fromRange(range) }.distinct().sorted())
+        )?.mapNotNull { range ->
+            Framerate.fromRange(range)
+        }?.distinct()?.sorted() ?: listOf()
+    val supportedVideoQualities = QualitySelector.getSupportedQualities(cameraInfo).associateWith {
+        supportedVideoFramerates + cameraManager.getAdditionalVideoFramerates(cameraId, it)
+    }.toSortedMap { a, b ->
+        listOf(Quality.SD, Quality.HD, Quality.FHD, Quality.UHD).let {
+            it.indexOf(a) - it.indexOf(b)
         }
     }
     val supportsVideoRecording = supportedVideoQualities.isNotEmpty()
