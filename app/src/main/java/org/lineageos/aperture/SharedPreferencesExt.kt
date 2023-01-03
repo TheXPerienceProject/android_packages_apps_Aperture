@@ -18,6 +18,24 @@ import org.lineageos.aperture.utils.FlashMode
 import org.lineageos.aperture.utils.Framerate
 import org.lineageos.aperture.utils.GridMode
 import org.lineageos.aperture.utils.StabilizationMode
+import org.lineageos.aperture.utils.TimerMode
+
+// Helpers
+internal fun SharedPreferences.getBoolean(key: String): Boolean? {
+    return if (contains(key)) {
+        getBoolean(key, false)
+    } else {
+        null
+    }
+}
+
+internal fun SharedPreferences.Editor.putBoolean(key: String, value: Boolean?) {
+    if (value == null) {
+        remove(key)
+    } else {
+        putBoolean(key, value)
+    }
+}
 
 // Generic prefs
 private const val LAST_CAMERA_FACING_KEY = "last_camera_facing"
@@ -233,10 +251,10 @@ internal var SharedPreferences.videoQuality: Quality
 private const val TIMER_MODE_KEY = "timer_mode"
 private const val TIMER_MODE_DEFAULT = 0
 
-internal var SharedPreferences.timerMode: Int
-    get() = getInt(TIMER_MODE_KEY, TIMER_MODE_DEFAULT)
+internal var SharedPreferences.timerMode: TimerMode
+    get() = TimerMode.fromSeconds(getInt(TIMER_MODE_KEY, TIMER_MODE_DEFAULT)) ?: TimerMode.OFF
     set(value) = edit {
-        putInt(TIMER_MODE_KEY, value)
+        putInt(TIMER_MODE_KEY, value.seconds)
     }
 
 // Aspect ratio
@@ -272,9 +290,8 @@ internal var SharedPreferences.brightScreen: Boolean
 
 // Save location
 private const val SAVE_LOCATION = "save_location"
-private const val SAVE_LOCATION_DEFAULT = false
-internal var SharedPreferences.saveLocation: Boolean
-    get() = getBoolean(SAVE_LOCATION, SAVE_LOCATION_DEFAULT)
+internal var SharedPreferences.saveLocation: Boolean?
+    get() = getBoolean(SAVE_LOCATION)
     set(value) = edit {
         putBoolean(SAVE_LOCATION, value)
     }
