@@ -5,12 +5,11 @@
 
 package org.lineageos.aperture
 
-import android.Manifest
 import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.app.KeyguardManager
 import android.content.Intent
-import android.content.pm.PackageManager
+import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.graphics.Rect
 import android.graphics.drawable.AnimatedVectorDrawable
@@ -88,6 +87,7 @@ import org.lineageos.aperture.utils.FlashMode
 import org.lineageos.aperture.utils.Framerate
 import org.lineageos.aperture.utils.GridMode
 import org.lineageos.aperture.utils.MediaType
+import org.lineageos.aperture.utils.PermissionsUtils
 import org.lineageos.aperture.utils.ShortcutsUtils
 import org.lineageos.aperture.utils.StabilizationMode
 import org.lineageos.aperture.utils.StorageUtils
@@ -151,6 +151,7 @@ open class CameraActivity : AppCompatActivity() {
     private val sharedPreferences by lazy {
         PreferenceManager.getDefaultSharedPreferences(this)
     }
+    private val permissionsUtils by lazy { PermissionsUtils(this) }
 
     // Current camera state
     private lateinit var camera: Camera
@@ -265,12 +266,29 @@ open class CameraActivity : AppCompatActivity() {
             } ?: location
         }
 
+        @Suppress("OVERRIDE_DEPRECATION")
+        override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {
+            // Required for Build.VERSION.SDK_INT < Build.VERSION_CODES.R
+        }
+
+        @Suppress("OVERRIDE_DEPRECATION")
+        override fun onProviderEnabled(provider: String) {
+            // Required for Build.VERSION.SDK_INT < Build.VERSION_CODES.R
+        }
+
+        @Suppress("OVERRIDE_DEPRECATION")
+        override fun onProviderDisabled(provider: String) {
+            // Required for Build.VERSION.SDK_INT < Build.VERSION_CODES.R
+        }
+
         @SuppressLint("MissingPermission")
         fun register() {
             // Reset cached location
             location = null
 
-            if (allLocationPermissionsGranted() && sharedPreferences.saveLocation == true) {
+            if (permissionsUtils.locationPermissionsGranted()
+                && sharedPreferences.saveLocation == true
+            ) {
                 // Request location updates
                 locationManager.allProviders.forEach {
                     locationManager.requestLocationUpdates(it, 1000, 1f, this)
@@ -291,13 +309,13 @@ open class CameraActivity : AppCompatActivity() {
         ActivityResultContracts.RequestMultiplePermissions()
     ) {
         if (it.isNotEmpty()) {
-            if (!allPermissionsGranted()) {
+            if (!permissionsUtils.mainPermissionsGranted()) {
                 Toast.makeText(
                     this, getString(R.string.app_permissions_toast), Toast.LENGTH_SHORT
                 ).show()
                 finish()
             }
-            sharedPreferences.saveLocation = allLocationPermissionsGranted()
+            sharedPreferences.saveLocation = permissionsUtils.locationPermissionsGranted()
         }
     }
 
@@ -364,8 +382,14 @@ open class CameraActivity : AppCompatActivity() {
         hideStatusBars()
 
         setContentView(R.layout.activity_camera)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1
+            && keyguardManager.isKeyguardLocked
+        ) {
             setShowWhenLocked(true)
+
+            @SuppressLint("SourceLockedOrientationActivity")
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         }
 
         // Register shortcuts
@@ -617,10 +641,8 @@ open class CameraActivity : AppCompatActivity() {
         super.onResume()
 
         // Request camera permissions
-        if (!allPermissionsGranted() || sharedPreferences.saveLocation == null) {
-            requestMultiplePermissions.launch(
-                REQUIRED_PERMISSIONS + REQUIRED_PERMISSIONS_LOCATION
-            )
+        if (!permissionsUtils.mainPermissionsGranted() || sharedPreferences.saveLocation == null) {
+            requestMultiplePermissions.launch(PermissionsUtils.allPermissions)
         }
 
         // Set bright screen
@@ -1490,14 +1512,6 @@ open class CameraActivity : AppCompatActivity() {
         levelerView.isVisible = enabled
     }
 
-    private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
-        ContextCompat.checkSelfPermission(baseContext, it) == PackageManager.PERMISSION_GRANTED
-    }
-
-    private fun allLocationPermissionsGranted() = REQUIRED_PERMISSIONS_LOCATION.all {
-        ContextCompat.checkSelfPermission(baseContext, it) == PackageManager.PERMISSION_GRANTED
-    }
-
     private fun updateGalleryButton() {
         runOnUiThread {
             val uri = sharedPreferences.lastSavedUri
@@ -1688,21 +1702,6 @@ open class CameraActivity : AppCompatActivity() {
 
     companion object {
         private const val LOG_TAG = "Aperture"
-
-        private val REQUIRED_PERMISSIONS =
-            mutableListOf(
-                Manifest.permission.CAMERA,
-                Manifest.permission.RECORD_AUDIO
-            ).apply {
-                if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
-                    add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                }
-            }.toTypedArray()
-        internal val REQUIRED_PERMISSIONS_LOCATION =
-            listOf(
-                Manifest.permission.ACCESS_COARSE_LOCATION,
-                Manifest.permission.ACCESS_FINE_LOCATION
-            ).toTypedArray()
 
         private const val MSG_HIDE_ZOOM_SLIDER = 0
         private const val MSG_HIDE_FOCUS_RING = 1
